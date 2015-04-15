@@ -55,7 +55,7 @@ public class ReminderLauncher extends CordovaPlugin implements NotificationInter
 	// wait at the beginning
 	private long startTime;
 	private long warmUpTime = 3000;
-	private LocationManager locationManager;
+	private LocationManager locationManager = null;
 	private LocationListener locationListenerGPS;
 	private LocationListener locationListenerNetwork;
 	private LocationListener locationListenerPassive;
@@ -70,8 +70,8 @@ public class ReminderLauncher extends CordovaPlugin implements NotificationInter
 	
 	private boolean providerEnabled = true;
 	private int providerStatus = -1;
-	private Location mLastLocation = null;
-	private long mLastLocationMillis = 0;
+	private Location lastGPSLocation = null;
+	private long lastGPSLocationMillis = 0;
 	private boolean isGPSAvailable = false;
 	private GpsStatus gpsStatus = null;
 	
@@ -85,35 +85,33 @@ public class ReminderLauncher extends CordovaPlugin implements NotificationInter
           		
           		timerResponseSent = true;
           		
-          		removeLocationListeners();
-          		
           		providerStatus = LocationProvider.OUT_OF_SERVICE;
           		
           		JSONObject gps;
           		
           		if(locGPS == null){
-          			gps = getProviderResponseByLocation(new Location(getBestProvider()));
+          			gps = getProviderResponseByLocation(new Location(getBestProvider()),true);
           		}
           		else{
-          			gps = getProviderResponseByLocation(locGPS);
+          			gps = getProviderResponseByLocation(locGPS,true);
           		}
           		
           		JSONObject net;
           		
           		if(locNetwork == null){
-          			net = getProviderResponseByLocation(new Location(getBestProvider()));
+          			net = getProviderResponseByLocation(new Location(getBestProvider()),false);
           		}
           		else{
-          			net = getProviderResponseByLocation(locNetwork);
+          			net = getProviderResponseByLocation(locNetwork,false);
           		}
           		
           		JSONObject passive;
           		
           		if(locPassive == null){
-          			passive = getProviderResponseByLocation(new Location(getBestProvider()));
+          			passive = getProviderResponseByLocation(new Location(getBestProvider()),false);
           		}
           		else{
-          			passive = getProviderResponseByLocation(locPassive);
+          			passive = getProviderResponseByLocation(locPassive,false);
           		}
           		
 				sendInfoResponse(gps, net, passive);
@@ -167,6 +165,7 @@ public class ReminderLauncher extends CordovaPlugin implements NotificationInter
 				return true;
 			}
 			else if(ACTION_REQUEST_PROVIDER.equalsIgnoreCase(action)){
+				interval = args.getInt(0);
 				PluginResult r = new PluginResult(PluginResult.Status.NO_RESULT);
 				r.setKeepCallback(true);
 				callbackContext.sendPluginResult(r);
@@ -250,6 +249,10 @@ public class ReminderLauncher extends CordovaPlugin implements NotificationInter
 	
 	private void requestLocationAccurancy(){
 		
+		if(locationManager != null){
+			removeLocationListeners();
+		}
+		
 		locationListenerGPS = new LocationListener() {
 	        @Override
 	        public void onStatusChanged(String provider, int status, Bundle extras) {
@@ -266,6 +269,8 @@ public class ReminderLauncher extends CordovaPlugin implements NotificationInter
 	        @Override
 	        public void onLocationChanged(Location location) {
 				locGPS = location;
+				lastGPSLocation = location;
+				lastGPSLocationMillis = System.currentTimeMillis();
 				onGPSLocationChanged(location);
 	        }
 	    };
@@ -316,21 +321,16 @@ public class ReminderLauncher extends CordovaPlugin implements NotificationInter
 		if(locationManager.isProviderEnabled(LocationManager.GPS_PROVIDER) || 
 		   locationManager.isProviderEnabled(LocationManager.NETWORK_PROVIDER )){
 			
-			locationManager.requestLocationUpdates(LocationManager.GPS_PROVIDER, 0, 0,locationListenerGPS);
-            locationManager.requestLocationUpdates(LocationManager.NETWORK_PROVIDER, 0, 0,locationListenerNetwork);
-            locationManager.requestLocationUpdates(LocationManager.PASSIVE_PROVIDER, 0, 0,locationListenerPassive);
-            /*
-			List<String> allProviders = locationManager.getAllProviders();
-	        for (String provider: allProviders) {
-	        	locationManager.requestLocationUpdates(provider, 0, 0, this);
-	        }
-	        */
+			locationManager.requestLocationUpdates(LocationManager.GPS_PROVIDER, interval, 0,locationListenerGPS);
+            locationManager.requestLocationUpdates(LocationManager.NETWORK_PROVIDER, interval, 0,locationListenerNetwork);
+            locationManager.requestLocationUpdates(LocationManager.PASSIVE_PROVIDER, interval, 0,locationListenerPassive);
+            
 	        locationManager.addGpsStatusListener(this);
 	        
 			serviceHandler = new Handler();
 	        serviceHandler.postDelayed( new timer(),warmUpTime);
 	        
-	        mLastLocation = null;
+	        lastGPSLocation = null;
 	        isGPSAvailable = false;
 	        providerEnabled = false;
 	        gpsStatus = null;
@@ -370,7 +370,18 @@ public class ReminderLauncher extends CordovaPlugin implements NotificationInter
 			jsonObj.put("net",net);
 			jsonObj.put("passive",passive);
 			
-			callCtx.sendPluginResult(new PluginResult(PluginResult.Status.OK, jsonObj));
+			PluginResult r = new PluginResult(PluginResult.Status.OK, jsonObj);
+			r.setKeepCallback(true);
+			
+			callCtx.sendPluginResult(r);
+			
+			serviceHandler.removeCallbacksAndMessages(null);
+			
+			serviceHandler = new Handler();
+	        serviceHandler.postDelayed( new timer(),warmUpTime);
+	        
+			allComplete = false;
+			timerResponseSent = false;
 			
 		}
 		catch (JSONException e){
@@ -379,7 +390,7 @@ public class ReminderLauncher extends CordovaPlugin implements NotificationInter
         
 	}
 	
-	private JSONObject getProviderResponseByLocation(Location location){
+	private JSONObject getProviderResponseByLocation(Location location, boolean isGPS){
 		
 		try{
 			
@@ -391,8 +402,10 @@ public class ReminderLauncher extends CordovaPlugin implements NotificationInter
 	        coords.put("longitude",location.getLongitude());
 	        
 	        coords.put("accurancy", location.getAccuracy());
-	        //coords.put("provider_enabled", providerEnabled);
-	        coords.put("gps_fix", isGPSAvailable);
+	        
+	        if(isGPS){
+	        	coords.put("gps_fix", isGPSAvailable);
+	        }
 	        
 	        if(location.hasBearing()){
 	        	coords.put("heading", location.getBearing());	
@@ -404,8 +417,6 @@ public class ReminderLauncher extends CordovaPlugin implements NotificationInter
 	        	coords.put("speed", location.getSpeed());	
 	        }
 	        
-	        //coords.put("out_of_service", (LocationProvider.OUT_OF_SERVICE == providerStatus ? true : false));
-			
 			jsonObj.put("coords",coords);
 			jsonObj.put("timestamp", location.getTime() != 0 ? location.getTime() : System.currentTimeMillis());
 			
@@ -433,11 +444,9 @@ public class ReminderLauncher extends CordovaPlugin implements NotificationInter
 			
 			allComplete = true;
 			
-			removeLocationListeners();
-	        
-	        JSONObject gps = getProviderResponseByLocation(locGPS);
-			JSONObject net = getProviderResponseByLocation(locNetwork);
-			JSONObject passive = getProviderResponseByLocation(locPassive);
+	        JSONObject gps = getProviderResponseByLocation(locGPS,true);
+			JSONObject net = getProviderResponseByLocation(locNetwork,false);
+			JSONObject passive = getProviderResponseByLocation(locPassive,false);
 			
 			sendInfoResponse(gps, net, passive);
 			
@@ -451,11 +460,9 @@ public class ReminderLauncher extends CordovaPlugin implements NotificationInter
 			
 			allComplete = true;
 			
-			removeLocationListeners();
-			
-	        JSONObject gps = getProviderResponseByLocation(locGPS);
-			JSONObject net = getProviderResponseByLocation(locNetwork);
-			JSONObject passive = getProviderResponseByLocation(locPassive);
+	        JSONObject gps = getProviderResponseByLocation(locGPS,true);
+			JSONObject net = getProviderResponseByLocation(locNetwork,false);
+			JSONObject passive = getProviderResponseByLocation(locPassive,false);
 			
 			sendInfoResponse(gps, net, passive);
 			
@@ -469,11 +476,9 @@ public class ReminderLauncher extends CordovaPlugin implements NotificationInter
 			
 			allComplete = true;
 			
-			removeLocationListeners();
-			
-	        JSONObject gps = getProviderResponseByLocation(locGPS);
-			JSONObject net = getProviderResponseByLocation(locNetwork);
-			JSONObject passive = getProviderResponseByLocation(locPassive);
+	        JSONObject gps = getProviderResponseByLocation(locGPS,true);
+			JSONObject net = getProviderResponseByLocation(locNetwork,false);
+			JSONObject passive = getProviderResponseByLocation(locPassive,false);
 			
 			sendInfoResponse(gps, net, passive);
 			
@@ -481,21 +486,6 @@ public class ReminderLauncher extends CordovaPlugin implements NotificationInter
 		
 	}
 	
-    public void onLocationChanged(Location location) {
-		
-		providerEnabled = true;
-		
-		mLastLocation = location;
-		mLastLocationMillis = System.currentTimeMillis();
-		
-		if(!timeWarmUpOut()){
-			return;
-		}
-		
-		
-	
-    }
-
     public void onStatusChanged(String provider, int status, Bundle extras) {
 		providerStatus = status;
     }
@@ -513,8 +503,8 @@ public class ReminderLauncher extends CordovaPlugin implements NotificationInter
         switch (event) {
             case GpsStatus.GPS_EVENT_SATELLITE_STATUS:
             
-                if (mLastLocation != null){
-                    isGPSAvailable = (System.currentTimeMillis() - mLastLocationMillis) < warmUpTime;
+                if (lastGPSLocation != null){
+                    isGPSAvailable = (System.currentTimeMillis() - lastGPSLocationMillis) < warmUpTime;
 				}
 				else{
 					isGPSAvailable = false;

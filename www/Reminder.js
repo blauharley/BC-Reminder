@@ -103,9 +103,13 @@ module.exports = {
      @param timestamp:integer
 
      errorCallback: Function
+     options:{
+         interval: 60000 (in milliseconds)
+     }
      */
-    requestProvider : function (successCallback, errorCallback) {
-        exec(successCallback, errorCallback, "Reminder", "request", []);
+    requestProvider : function (successCallback, errorCallback, options) {
+        var interval = options.interval ? options.interval : 60000;
+        exec(successCallback, errorCallback, "Reminder", "request", [interval]);
     },
 
     /*
