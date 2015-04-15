@@ -1,0 +1,74 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<plugin xmlns="http://www.phonegap.com/ns/plugins/1.0"
+        id="com.phonegap.reminder"
+        version="0.9.7">
+    <name>ReminderPlugin</name>
+
+    <js-module src="www/Reminder.js" name="Reminder">
+        <clobbers target="Reminder"/>
+    </js-module>
+
+    <!-- android -->
+    <platform name="android">
+        <config-file target="res/xml/config.xml" parent="/*">
+            <feature name="Reminder">
+                <param name="android-package" value="com.phonegap.reminder.ReminderLauncher"/>
+            </feature>
+        </config-file>
+
+        <config-file target="AndroidManifest.xml" parent="/manifest">
+            <uses-sdk android:minSdkVersion="16" android:targetSdkVersion="19" />
+
+            <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+            <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+            <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+            <uses-permission android:name="android.permission.ACCESS_COARSE_UPDATES" />
+            <uses-permission android:name="android.permission.ACCESS_LOCATION_EXTRA_COMMANDS" />
+        </config-file>
+
+        <config-file target="AndroidManifest.xml" parent="/manifest/application">
+        	<service android:name="com.phonegap.reminder.ReminderService" android:enabled="true" android:process=":remote"></service>
+        </config-file>
+
+        <source-file src="src/android/NotificationInterface.java" target-dir="src/com/phonegap/reminder" />
+		<source-file src="src/android/ReminderLauncher.java" target-dir="src/com/phonegap/reminder" />
+        <source-file src="src/android/ReminderService.java" target-dir="src/com/phonegap/reminder" />
+		<source-file src="src/android/RunningInterface.java" target-dir="src/com/phonegap/reminder" />
+
+		<resource-file src="src/android/icon/drawable-mdpi/ic_billclick_large.png" target="res/drawable/ic_billclick_large.png" />
+		
+		<resource-file src="src/android/icon/drawable-hdpi/ic_billclick_large.png" target="res/drawable-hdpi/ic_billclick_large.png" />
+		<resource-file src="src/android/icon/drawable-mdpi/ic_billclick_large.png" target="res/drawable-mdpi/ic_billclick_large.png" />
+		<resource-file src="src/android/icon/drawable-xhdpi/ic_billclick_large.png" target="res/drawable-xhdpi/ic_billclick_large.png" />
+		<resource-file src="src/android/icon/drawable-xxhdpi/ic_billclick_large.png" target="res/drawable-xxhdpi/ic_billclick_large.png" />
+		
+    </platform>
+
+    <!-- wp8 -->
+    <platform name="wp8">
+
+        <config-file target="config.xml" parent="/*">
+            <feature name="Reminder">
+                <param name="wp-package" value="Reminder" onload="true" />
+                <param name="onload" value="true" />
+            </feature>
+        </config-file>
+
+        <config-file target="Properties/WMAppManifest.xml" parent="/Deployment/App/Tasks/DefaultTask">
+            <BackgroundExecution>
+                <ExecutionType Name="LocationTracking" />
+            </BackgroundExecution>
+        </config-file>
+
+        <config-file target="Properties/WMAppManifest.xml" parent="/Deployment/App/Capabilities">
+            <Capability Name="ID_CAP_LOCATION" />
+        </config-file>
+
+        <source-file src="src/wp8/Reminder.cs" />
+        <source-file src="src/wp8/ExtensionMethods.cs" />
+	<source-file src="src/wp8/whistle.wav" />
+
+    </platform>
+
+</plugin>
