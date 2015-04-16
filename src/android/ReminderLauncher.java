@@ -326,10 +326,10 @@ public class ReminderLauncher extends CordovaPlugin implements NotificationInter
             locationManager.requestLocationUpdates(LocationManager.PASSIVE_PROVIDER, interval, 0,locationListenerPassive);
             
 	        locationManager.addGpsStatusListener(this);
-	        
+	        /*
 			serviceHandler = new Handler();
 	        serviceHandler.postDelayed( new timer(),warmUpTime);
-	        
+	        */
 	        lastGPSLocation = null;
 	        isGPSAvailable = false;
 	        providerEnabled = false;
@@ -374,12 +374,12 @@ public class ReminderLauncher extends CordovaPlugin implements NotificationInter
 			r.setKeepCallback(true);
 			
 			callCtx.sendPluginResult(r);
-			
+			/*
 			serviceHandler.removeCallbacksAndMessages(null);
 			
 			serviceHandler = new Handler();
 	        serviceHandler.postDelayed( new timer(),warmUpTime);
-	        
+	        */
 			allComplete = false;
 			timerResponseSent = false;
 			
