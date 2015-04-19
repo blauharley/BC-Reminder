@@ -25,8 +25,9 @@ import android.os.Looper;
 import android.preference.PreferenceManager;
 
 import java.util.Calendar;
+import java.text.SimpleDateFormat;
 
-public class ReminderService extends Service implements LocationListener, NotificationInterface{
+public class ReminderService extends Service implements NotificationInterface{
 
 	private final static String name = "ReminderService";
 
@@ -36,6 +37,7 @@ public class ReminderService extends Service implements LocationListener, Notifi
 
 	private Location startLoc;
 	private Location lastloc;
+	// keep it set to null
 	private LocationManager locationManager = null;
 
 	private String title;
@@ -55,7 +57,8 @@ public class ReminderService extends Service implements LocationListener, Notifi
 	private long currentMsTime;
 	private int stopServiceDate = -1;
 
-	private Handler serviceHandler = null;
+	private Handler serviceGPSHandler = null;
+	private Handler serviceNetworkHandler = null;
 	
 	private boolean locSubscribed = false;
 
@@ -67,12 +70,30 @@ public class ReminderService extends Service implements LocationListener, Notifi
 	
 	private int locationRequestTimeout = 1000*60;
 	
-	class timer implements Runnable {
+	private LocationListener locationListenerGPS;
+	private LocationListener locationListenerNetwork;
+	private LocationListener locationListenerPassive;
+	private boolean listenerMutex = false;
+	
+	private Location currentTakenLoc = null;
+	private boolean startLocationTaken = false;
+	
+	class gpsTimer implements Runnable {
           public void run() {
             
-            serviceHandler.postDelayed( new timer(),interval+locationRequestTimeout);
+            serviceGPSHandler.postDelayed( new gpsTimer(),interval+locationRequestTimeout);
             
-            attachToLocationUpdates();
+            attachToGPSLocationUpdates(false);
+            
+          }
+    }
+    
+    class networkTimer implements Runnable {
+          public void run() {
+            
+            serviceNetworkHandler.postDelayed( new networkTimer(),interval+locationRequestTimeout);
+            
+            attachToNetworkLocationUpdates(false);
             
           }
     }
@@ -116,8 +137,11 @@ public class ReminderService extends Service implements LocationListener, Notifi
 		startTime = System.currentTimeMillis();
 		currentMsTime = startTime;
 
-		serviceHandler = new Handler();
-        serviceHandler.postDelayed( new timer(),interval+locationRequestTimeout);
+		serviceGPSHandler = new Handler();
+        serviceGPSHandler.postDelayed( new gpsTimer(),interval+locationRequestTimeout);
+        
+        serviceNetworkHandler = new Handler();
+        serviceNetworkHandler.postDelayed( new networkTimer(),interval+locationRequestTimeout);
         
 		attachToLocationUpdates();
 		
@@ -158,34 +182,154 @@ public class ReminderService extends Service implements LocationListener, Notifi
 	
 	private void attachToLocationUpdates(){
 		
-		if(locationManager != null){
-			locationManager.removeUpdates(this);	
-		}
-		
 		if(!isRunning()){
         	return;
         }
         
-		Criteria c = new Criteria();
-        c.setAccuracy(Criteria.ACCURACY_LOW);
-        c.setHorizontalAccuracy(DESIRED_LOCATION_ACCURANCY_MEDIUM);
-        c.setPowerRequirement(Criteria.POWER_HIGH);
+        locationManager = (LocationManager)getSystemService(Context.LOCATION_SERVICE);
         
-        locationManager = (LocationManager) getSystemService(LOCATION_SERVICE);
-        final String PROVIDER = locationManager.getBestProvider(c, true);
-        
-		locationManager.removeUpdates(this);	
+		attachToGPSLocationUpdates(true);
+	    
+	    attachToNetworkLocationUpdates(true);
+	 
+	 	locationListenerPassive = new LocationListener() {
+	        @Override
+	        public void onStatusChanged(String provider, int status, Bundle extras) {
+	            
+	        }
+	
+	        @Override
+	        public void onProviderEnabled(String provider) {
+	        }
+	
+	        @Override
+	        public void onProviderDisabled(String provider) {
+	        }
+	
+	        @Override
+	        public void onLocationChanged(Location location) {
+				
+				if(isLocationUpdateUpToDate(location)){
+	        		handleLocationChangedEvent(location);	
+	        	}
+				
+	        }
+	    };
+    	
+	}
+	
+	private void attachToGPSLocationUpdates(boolean init){
 		
-		if(aggressive){
-			locationManager.requestLocationUpdates(PROVIDER, 0, 0, this);
+		if(init){
+			locationListenerGPS = new LocationListener() {
+		        @Override
+		        public void onStatusChanged(String provider, int status, Bundle extras) {
+		        }
+		
+		        @Override
+		        public void onProviderEnabled(String provider) {
+		        }
+		
+		        @Override
+		        public void onProviderDisabled(String provider) {
+		        }
+		
+		        @Override
+		        public void onLocationChanged(Location location) {
+		        	
+		        	if(isLocationUpdateUpToDate(location)){
+		        		handleLocationChangedEvent(location);	
+		        	}
+					
+		        }
+		    };
 		}
 		else{
-			if(warmUpTime != -1){
-				warmUpTime = 0;	
-			}
-			locationManager.requestLocationUpdates(PROVIDER, interval, 0, this);
+			locationManager.removeUpdates(locationListenerGPS);	
 		}
 		
+		if(aggressive){
+				
+			if(locationManager.isProviderEnabled(LocationManager.GPS_PROVIDER)){
+				locationManager.requestLocationUpdates(LocationManager.GPS_PROVIDER, 0, 0,locationListenerGPS);
+			}
+			
+		}
+		else{
+			
+			if(locationManager.isProviderEnabled(LocationManager.GPS_PROVIDER)){
+				locationManager.requestLocationUpdates(LocationManager.GPS_PROVIDER, interval, 0,locationListenerGPS);
+			}
+			
+		}
+		
+	}
+	
+	private void attachToNetworkLocationUpdates(boolean init){
+		
+		if(init){
+			locationListenerNetwork = new LocationListener() {
+		        @Override
+		        public void onStatusChanged(String provider, int status, Bundle extras) {
+		        }
+		
+		        @Override
+		        public void onProviderEnabled(String provider) {
+		        }
+		
+		        @Override
+		        public void onProviderDisabled(String provider) {
+		        }
+		
+		        @Override
+		        public void onLocationChanged(Location location) {
+		        	
+		        	if(isLocationUpdateUpToDate(location)){
+		        		handleLocationChangedEvent(location);	
+		        	}
+					
+		        }
+		    };
+		}
+		else{
+			locationManager.removeUpdates(locationListenerNetwork);	
+		}
+		
+		if(aggressive){
+				
+			if(locationManager.isProviderEnabled(LocationManager.NETWORK_PROVIDER )){
+				locationManager.requestLocationUpdates(LocationManager.NETWORK_PROVIDER, 0, 0,locationListenerNetwork);
+			}
+			
+		}
+		else{
+			
+			if(locationManager.isProviderEnabled(LocationManager.NETWORK_PROVIDER )){
+				locationManager.requestLocationUpdates(LocationManager.NETWORK_PROVIDER, interval, 0,locationListenerNetwork);
+			}
+			
+		}
+		
+	}
+	
+	private void attachToNetworkLocationUpdates(){
+		
+	}
+	
+	private void attachToPassiveLocationUpdates(){
+		
+	}
+	
+	private boolean isLocationUpdateUpToDate(Location location){
+		long now = System.currentTimeMillis();
+		long time = location.getTime();
+		return (now - time) <= interval && location.getLatitude() != 0 && location.getLongitude() != 0; 
+	}
+	
+	private void removeLocationListeners(){
+		locationManager.removeUpdates(locationListenerGPS);
+        locationManager.removeUpdates(locationListenerNetwork);
+        locationManager.removeUpdates(locationListenerPassive);
 	}
 	
 	private void makeWhistle(){
@@ -210,8 +354,9 @@ public class ReminderService extends Service implements LocationListener, Notifi
 	
 	private synchronized void cleanUp() {
 
-		serviceHandler.removeCallbacksAndMessages(null);
-		
+		serviceGPSHandler.removeCallbacksAndMessages(null);
+	    serviceNetworkHandler.removeCallbacksAndMessages(null);
+	        
 		PackageManager pm = getPackageManager();
 		Intent callingIntent = pm.getLaunchIntentForPackage(getApplicationContext().getPackageName());
 		
@@ -219,7 +364,7 @@ public class ReminderService extends Service implements LocationListener, Notifi
 		mNotificationManager.cancel(NOTIFICATION_ID);
 		
 		if(locationManager != null){
-			locationManager.removeUpdates(this);
+			removeLocationListeners();
 		}
 		
 		setRunning(false);
@@ -236,10 +381,18 @@ public class ReminderService extends Service implements LocationListener, Notifi
 		}
 		else{
 
+			Calendar calendar = Calendar.getInstance();
+		    calendar.setTimeInMillis(currentTakenLoc.getTime());
+		    SimpleDateFormat sdf = new SimpleDateFormat("HH:mm:ss");
+			String currTime = sdf.format(calendar.getTime());
+
 			Notification.Builder builder = new Notification.Builder(this)
 			        .setSmallIcon(getResources().getIdentifier("ic_billclick_large", "drawable", getPackageName()))
 			        .setContentTitle(title)
-			        .setContentText(content.replace("#ML", String.valueOf(linearDistance)).replace("#MR", String.valueOf(radiusDistance)))
+			        .setContentText(
+			        	currTime+"/"+(goToHold?"stop":"go")+"/"+String.format("%-12.2f", linearDistance)
+			        	//content.replace("#ML", ).replace("#MR", String.valueOf(radiusDistance))
+			        )
 			        .setAutoCancel(true);
 	
 			int requestID = (int) System.currentTimeMillis();
@@ -275,57 +428,52 @@ public class ReminderService extends Service implements LocationListener, Notifi
 
 	}
 
-	@Override
-	public void onLocationChanged(Location location) {
+	public void handleLocationChangedEvent(Location location) {
 		
-		serviceHandler.removeCallbacksAndMessages(null);
-		
-		if(handleServiceStop()){
-			stopSelf();
-			return;
-		}
-		
-		serviceHandler.postDelayed( new timer(),interval+locationRequestTimeout);
-		
-		if(!timeWarmUpOut() || warmUpTime == 0){
+		if(!listenerMutex){
 			
-			startLoc.set(location);
-			lastloc.set(location);
+			listenerMutex = true;
 			
-			if(warmUpTime == 0){
-				warmUpTime = -1;
-			}
-			else{
+			currentTakenLoc = location;
+			
+			serviceGPSHandler.removeCallbacksAndMessages(null);
+	        serviceNetworkHandler.removeCallbacksAndMessages(null);
+	        
+			if(handleServiceStop()){
+				stopSelf();
 				return;
 			}
 			
+			serviceGPSHandler.postDelayed( new gpsTimer(),interval+locationRequestTimeout);
+	        serviceNetworkHandler.postDelayed( new networkTimer(),interval+locationRequestTimeout);
+	        
+			if(!timeWarmUpOut() || (!startLocationTaken && !aggressive)){
+				
+				startLoc.set(location);
+				lastloc.set(location);
+				
+				startLocationTaken = true;
+				
+				if(aggressive){
+					return;
+				}
+				
+			}
+			
+			if(mode.equalsIgnoreCase(AIM_MODE)){
+				handleAimModeByLocation(location);
+			}
+			else if(mode.equalsIgnoreCase(TRACK_MODE)){
+				handleTrackModeByLocation(location);
+			}
+			else if(mode.equalsIgnoreCase(STATUS_MODE)){
+				handleStatusModeByLocation(location);
+			}
+			
+			listenerMutex = false;
+			
 		}
 		
-		if(mode.equalsIgnoreCase(AIM_MODE)){
-			handleAimModeByLocation(location);
-		}
-		else if(mode.equalsIgnoreCase(TRACK_MODE)){
-			handleTrackModeByLocation(location);
-		}
-		else if(mode.equalsIgnoreCase(STATUS_MODE)){
-			handleStatusModeByLocation(location);
-		}
-		
-	}
-
-	@Override
-	public void onProviderDisabled(String provider) {
-
-	}
-
-	@Override
-	public void onProviderEnabled(String provider) {
-		
-	}
-
-	@Override
-	public void onStatusChanged(String provider, int status, Bundle extras) {
-
 	}
 
 	@Override
@@ -344,7 +492,7 @@ public class ReminderService extends Service implements LocationListener, Notifi
 		/*
 		 * show notification when user has entered aim area
 		 */
-		if( distanceToAim < distanceTolerance && timeOut()){
+		if( distanceToAim < distanceTolerance && (timeOut() || !aggressive)){
 
 			startLoc.set(location);
 
@@ -370,7 +518,7 @@ public class ReminderService extends Service implements LocationListener, Notifi
 		/*
 		 * show notification when time and distance is reached
 		 */
-		if( linearDistance >= distance && timeOut()){
+		if( linearDistance >= distance && (timeOut() || !aggressive)){
 
 			startLoc.set(location);
 
@@ -403,7 +551,7 @@ public class ReminderService extends Service implements LocationListener, Notifi
 		/*
 		 * show notification when user's movement status changed
 		 */
-		if(isStanding != goToHold && timeOut()){
+		if(isStanding != goToHold && (timeOut() || !aggressive)){
 
 			startLoc.set(location);
 
