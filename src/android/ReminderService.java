@@ -35,6 +35,8 @@ public class ReminderService extends Service implements NotificationInterface{
 	private final static String TRACK_MODE = "track";
 	private final static String STATUS_MODE = "status";
 
+	private int startServiceId;
+	
 	private Location startLoc;
 	private Location lastloc;
 	// keep it set to null
@@ -78,6 +80,9 @@ public class ReminderService extends Service implements NotificationInterface{
 	private Location currentTakenLoc = null;
 	private boolean startLocationTaken = false;
 	
+	private Handler mUserLocationHandler = null;
+	private Thread triggerService = null;
+
 	class gpsTimer implements Runnable {
           public void run() {
             
@@ -101,6 +106,8 @@ public class ReminderService extends Service implements NotificationInterface{
 	@Override
 	public int onStartCommand(Intent intent, int flags, int startId) {
 
+		startServiceId = startId;
+		
 		title = intent.getExtras().getString("title");
 		content = intent.getExtras().getString("content");
 		distance = intent.getExtras().getFloat("distance");
@@ -134,6 +141,8 @@ public class ReminderService extends Service implements NotificationInterface{
 		locAim.setLongitude(aimLong);
 		locAim.setLatitude(aimLat);
 
+		startLocationTaken = false;
+		
 		startTime = System.currentTimeMillis();
 		currentMsTime = startTime;
 
@@ -143,9 +152,34 @@ public class ReminderService extends Service implements NotificationInterface{
         serviceNetworkHandler = new Handler();
         serviceNetworkHandler.postDelayed( new networkTimer(),interval+locationRequestTimeout);
         
-		attachToLocationUpdates();
-		
+        triggerService = new Thread(new Runnable(){
+			@TargetApi(16)
+	        public void run(){
+	            try{
+	            	
+	                Looper.prepare();
+	                
+	                if(isRunning() && !locSubscribed){
+	                	
+	                	locSubscribed = true;
+	                	
+	                	mUserLocationHandler = new Handler();
+	                	
+		                attachToLocationUpdates();
+		                
+	                }
+	                
+	                Looper.loop();
+		              
+	            }catch(Exception ex){
+	            	
+	            }
+	        }
+	    }, "LocationThread");
+	    
 	    setRunning(true);
+	    
+	    triggerService.start();
 	    
 	    return START_REDELIVER_INTENT;
 
@@ -164,7 +198,8 @@ public class ReminderService extends Service implements NotificationInterface{
 	public void onDestroy() {
 	
 		cleanUp();
-
+		super.onDestroy();
+		
 	}
 	
 	public boolean isRunning() {
@@ -312,14 +347,6 @@ public class ReminderService extends Service implements NotificationInterface{
 		
 	}
 	
-	private void attachToNetworkLocationUpdates(){
-		
-	}
-	
-	private void attachToPassiveLocationUpdates(){
-		
-	}
-	
 	private boolean isLocationUpdateUpToDate(Location location){
 		long now = System.currentTimeMillis();
 		long time = location.getTime();
@@ -369,6 +396,14 @@ public class ReminderService extends Service implements NotificationInterface{
 		
 		setRunning(false);
 		
+		locationManager = null;
+		
+		if(mUserLocationHandler != null){
+			mUserLocationHandler.getLooper().quit();
+		}
+		
+		triggerService.interrupt();
+
 	}
 
 	@TargetApi(16)
@@ -430,50 +465,58 @@ public class ReminderService extends Service implements NotificationInterface{
 
 	public void handleLocationChangedEvent(Location location) {
 		
-		if(!listenerMutex){
+		try{
 			
-			listenerMutex = true;
-			
-			currentTakenLoc = location;
-			
-			serviceGPSHandler.removeCallbacksAndMessages(null);
-	        serviceNetworkHandler.removeCallbacksAndMessages(null);
-	        
-			if(handleServiceStop()){
-				stopSelf();
-				return;
-			}
-			
-			serviceGPSHandler.postDelayed( new gpsTimer(),interval+locationRequestTimeout);
-	        serviceNetworkHandler.postDelayed( new networkTimer(),interval+locationRequestTimeout);
-	        
-			if(!timeWarmUpOut() || (!startLocationTaken && !aggressive)){
+			if(!listenerMutex){
 				
-				startLoc.set(location);
-				lastloc.set(location);
+				listenerMutex = true;
 				
-				startLocationTaken = true;
+				currentTakenLoc = location;
 				
-				if(aggressive){
+				serviceGPSHandler.removeCallbacksAndMessages(null);
+		        serviceNetworkHandler.removeCallbacksAndMessages(null);
+		        
+				if(handleServiceStop()){
+					stopSelf(startServiceId);
+					listenerMutex = false;
 					return;
 				}
 				
+				serviceGPSHandler.postDelayed( new gpsTimer(),interval+locationRequestTimeout);
+		        serviceNetworkHandler.postDelayed( new networkTimer(),interval+locationRequestTimeout);
+		        
+				if(!timeWarmUpOut() || (!startLocationTaken && !aggressive)){
+					
+					startLoc.set(location);
+					lastloc.set(location);
+					
+					startLocationTaken = true;
+					
+					if(aggressive){
+						return;
+					}
+					
+				}
+				
+				if(mode.equalsIgnoreCase(AIM_MODE)){
+					handleAimModeByLocation(location);
+				}
+				else if(mode.equalsIgnoreCase(TRACK_MODE)){
+					handleTrackModeByLocation(location);
+				}
+				else if(mode.equalsIgnoreCase(STATUS_MODE)){
+					handleStatusModeByLocation(location);
+				}
+				
+				listenerMutex = false;
+				
 			}
-			
-			if(mode.equalsIgnoreCase(AIM_MODE)){
-				handleAimModeByLocation(location);
-			}
-			else if(mode.equalsIgnoreCase(TRACK_MODE)){
-				handleTrackModeByLocation(location);
-			}
-			else if(mode.equalsIgnoreCase(STATUS_MODE)){
-				handleStatusModeByLocation(location);
-			}
-			
-			listenerMutex = false;
 			
 		}
-		
+		catch (Exception e){
+			onDestroy();
+        }
+        
 	}
 
 	@Override
