@@ -78,6 +78,7 @@ public class ReminderService extends Service implements NotificationInterface{
 	private boolean listenerMutex = false;
 	
 	private Location currentTakenLoc = null;
+	private String currentLocationType;
 	private boolean startLocationTaken = false;
 	
 	private Handler mUserLocationHandler = null;
@@ -245,7 +246,7 @@ public class ReminderService extends Service implements NotificationInterface{
 	        public void onLocationChanged(Location location) {
 				
 				if(isLocationUpdateUpToDate(location)){
-	        		handleLocationChangedEvent(location);	
+	        		handleLocationChangedEvent(location,"passive");	
 	        	}
 				
 	        }
@@ -273,7 +274,7 @@ public class ReminderService extends Service implements NotificationInterface{
 		        public void onLocationChanged(Location location) {
 		        	
 		        	if(isLocationUpdateUpToDate(location)){
-		        		handleLocationChangedEvent(location);	
+		        		handleLocationChangedEvent(location,"gps");	
 		        	}
 					
 		        }
@@ -320,7 +321,7 @@ public class ReminderService extends Service implements NotificationInterface{
 		        public void onLocationChanged(Location location) {
 		        	
 		        	if(isLocationUpdateUpToDate(location)){
-		        		handleLocationChangedEvent(location);	
+		        		handleLocationChangedEvent(location,"network");	
 		        	}
 					
 		        }
@@ -425,7 +426,7 @@ public class ReminderService extends Service implements NotificationInterface{
 			        .setSmallIcon(getResources().getIdentifier("ic_billclick_large", "drawable", getPackageName()))
 			        .setContentTitle(title)
 			        .setContentText(
-			        	currTime+"/"+(goToHold?"stop":"go")+"/"+String.format("%-12.2f", linearDistance)
+			        	currentLocationType+"/"+currTime+"/"+(goToHold?"stop":"go")+"/"+String.format("%-12.2f", linearDistance)
 			        	//content.replace("#ML", ).replace("#MR", String.valueOf(radiusDistance))
 			        )
 			        .setAutoCancel(true);
@@ -463,13 +464,15 @@ public class ReminderService extends Service implements NotificationInterface{
 
 	}
 
-	public void handleLocationChangedEvent(Location location) {
+	public void handleLocationChangedEvent(Location location, String locationType) {
 		
 		try{
 			
 			if(!listenerMutex){
 				
 				listenerMutex = true;
+				
+				currentLocationType = locationType;
 				
 				currentTakenLoc = location;
 				
