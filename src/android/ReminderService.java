@@ -25,6 +25,7 @@ import android.os.Looper;
 import android.preference.PreferenceManager;
 
 import java.util.Calendar;
+import java.util.concurrent.TimeUnit;
 import java.text.SimpleDateFormat;
 
 public class ReminderService extends Service implements NotificationInterface{
@@ -55,11 +56,14 @@ public class ReminderService extends Service implements NotificationInterface{
 	
 	private float radiusDistance;
 	private float linearDistance;
+	private float currDistanceStep;
 	private Integer desiredAccuracy = 0;
 	private long currentMsTime;
+	private long endTimeCoordTaken = 0;
+	private long lastEndTimeCoordTaken = 0;
 	private int stopServiceDate = -1;
 
-	private Handler serviceGPSHandler = null;
+	private Handler serviceTimer = null;
 	private Handler serviceNetworkHandler = null;
 	
 	private boolean locSubscribed = false;
@@ -70,36 +74,38 @@ public class ReminderService extends Service implements NotificationInterface{
 	private long startTime;
 	private long warmUpTime = 5000;
 	
-	private int locationRequestTimeout = 1000*60;
+	private int locationTimerTimeout = 1000*3;
 	
 	private LocationListener locationListenerGPS;
 	private LocationListener locationListenerNetwork;
 	private LocationListener locationListenerPassive;
-	private boolean listenerMutex = false;
 	
 	private Location currentTakenLoc = null;
+	private Location locGPS = null;
+	private Location locNetwork = null;
+	private Location locPassive = null;
 	private String currentLocationType;
 	private boolean startLocationTaken = false;
 	
 	private Handler mUserLocationHandler = null;
 	private Thread triggerService = null;
 
-	class gpsTimer implements Runnable {
+	class timer implements Runnable {
           public void run() {
             
-            serviceGPSHandler.postDelayed( new gpsTimer(),interval+locationRequestTimeout);
+            serviceTimer.postDelayed( new timer(),interval+locationTimerTimeout);
             
-            attachToGPSLocationUpdates(false);
-            
-          }
-    }
-    
-    class networkTimer implements Runnable {
-          public void run() {
-            
-            serviceNetworkHandler.postDelayed( new networkTimer(),interval+locationRequestTimeout);
-            
-            attachToNetworkLocationUpdates(false);
+            if(locGPS != null && isLocationUpdateUpToDate(locGPS)){
+        		handleLocationChangedEvent(locGPS,"gps");	
+        	}
+        	else if(locNetwork != null && isLocationUpdateUpToDate(locNetwork)){
+        		handleLocationChangedEvent(locNetwork,"net");	
+        	}
+        	else if(locPassive != null && isLocationUpdateUpToDate(locPassive)){
+        		handleLocationChangedEvent(locPassive,"passive");	
+        	}
+        	
+        	endTimeCoordTaken = System.currentTimeMillis();
             
           }
     }
@@ -147,12 +153,11 @@ public class ReminderService extends Service implements NotificationInterface{
 		startTime = System.currentTimeMillis();
 		currentMsTime = startTime;
 
-		serviceGPSHandler = new Handler();
-        serviceGPSHandler.postDelayed( new gpsTimer(),interval+locationRequestTimeout);
+		serviceTimer = new Handler();
+        serviceTimer.postDelayed( new timer(),interval+locationTimerTimeout);
         
-        serviceNetworkHandler = new Handler();
-        serviceNetworkHandler.postDelayed( new networkTimer(),interval+locationRequestTimeout);
-        
+        endTimeCoordTaken = System.currentTimeMillis();
+            
         triggerService = new Thread(new Runnable(){
 			@TargetApi(16)
 	        public void run(){
@@ -244,11 +249,7 @@ public class ReminderService extends Service implements NotificationInterface{
 	
 	        @Override
 	        public void onLocationChanged(Location location) {
-				
-				if(isLocationUpdateUpToDate(location)){
-	        		handleLocationChangedEvent(location,"passive");	
-	        	}
-				
+				locPassive = location;
 	        }
 	    };
     	
@@ -272,11 +273,7 @@ public class ReminderService extends Service implements NotificationInterface{
 		
 		        @Override
 		        public void onLocationChanged(Location location) {
-		        	
-		        	if(isLocationUpdateUpToDate(location)){
-		        		handleLocationChangedEvent(location,"gps");	
-		        	}
-					
+		        	locGPS = location;
 		        }
 		    };
 		}
@@ -319,11 +316,7 @@ public class ReminderService extends Service implements NotificationInterface{
 		
 		        @Override
 		        public void onLocationChanged(Location location) {
-		        	
-		        	if(isLocationUpdateUpToDate(location)){
-		        		handleLocationChangedEvent(location,"network");	
-		        	}
-					
+		        	locNetwork = location;
 		        }
 		    };
 		}
@@ -382,9 +375,8 @@ public class ReminderService extends Service implements NotificationInterface{
 	
 	private synchronized void cleanUp() {
 
-		serviceGPSHandler.removeCallbacksAndMessages(null);
-	    serviceNetworkHandler.removeCallbacksAndMessages(null);
-	        
+		serviceTimer.removeCallbacksAndMessages(null);
+	    
 		PackageManager pm = getPackageManager();
 		Intent callingIntent = pm.getLaunchIntentForPackage(getApplicationContext().getPackageName());
 		
@@ -417,16 +409,17 @@ public class ReminderService extends Service implements NotificationInterface{
 		}
 		else{
 
-			Calendar calendar = Calendar.getInstance();
-		    calendar.setTimeInMillis(currentTakenLoc.getTime());
-		    SimpleDateFormat sdf = new SimpleDateFormat("HH:mm:ss");
-			String currTime = sdf.format(calendar.getTime());
-
+            long diff = lastEndTimeCoordTaken == 0 ? 0 : Math.abs(lastEndTimeCoordTaken-endTimeCoordTaken);
+            
+			String currTime = String.format("%d sec", TimeUnit.MILLISECONDS.toSeconds(diff));
+			
+			lastEndTimeCoordTaken = endTimeCoordTaken;
+			
 			Notification.Builder builder = new Notification.Builder(this)
 			        .setSmallIcon(getResources().getIdentifier("ic_billclick_large", "drawable", getPackageName()))
 			        .setContentTitle(title)
 			        .setContentText(
-			        	currentLocationType+"/"+currTime+"/"+(goToHold?"stop":"go")+"/"+String.format("%-12.2f", linearDistance)
+			        	currentLocationType+"/"+currTime+"/"+(goToHold?"stop":"go")+"/"+String.format("%-12.2f", currDistanceStep)
 			        	//content.replace("#ML", ).replace("#MR", String.valueOf(radiusDistance))
 			        )
 			        .setAutoCancel(true);
@@ -468,52 +461,25 @@ public class ReminderService extends Service implements NotificationInterface{
 		
 		try{
 			
-			if(!listenerMutex){
+			currentLocationType = locationType;
+			
+			currentTakenLoc = location;
+			
+			if(handleServiceStop()){
+				stopSelf(startServiceId);
+				return;
+			}
+			
+			if(!startLocationTaken){
 				
-				listenerMutex = true;
+				startLoc.set(location);
+				lastloc.set(location);
 				
-				currentLocationType = locationType;
-				
-				currentTakenLoc = location;
-				
-				serviceGPSHandler.removeCallbacksAndMessages(null);
-		        serviceNetworkHandler.removeCallbacksAndMessages(null);
-		        
-				if(handleServiceStop()){
-					stopSelf(startServiceId);
-					listenerMutex = false;
-					return;
-				}
-				
-				serviceGPSHandler.postDelayed( new gpsTimer(),interval+locationRequestTimeout);
-		        serviceNetworkHandler.postDelayed( new networkTimer(),interval+locationRequestTimeout);
-		        
-				if(!timeWarmUpOut() || (!startLocationTaken && !aggressive)){
-					
-					startLoc.set(location);
-					lastloc.set(location);
-					
-					startLocationTaken = true;
-					
-					if(aggressive){
-						return;
-					}
-					
-				}
-				
-				if(mode.equalsIgnoreCase(AIM_MODE)){
-					handleAimModeByLocation(location);
-				}
-				else if(mode.equalsIgnoreCase(TRACK_MODE)){
-					handleTrackModeByLocation(location);
-				}
-				else if(mode.equalsIgnoreCase(STATUS_MODE)){
-					handleStatusModeByLocation(location);
-				}
-				
-				listenerMutex = false;
+				startLocationTaken = true;
 				
 			}
+			
+			handleStatusModeByLocation(location);
 			
 		}
 		catch (Exception e){
@@ -526,55 +492,6 @@ public class ReminderService extends Service implements NotificationInterface{
 	public IBinder onBind(Intent intent) {
 		// TODO Auto-generated method stub
 		return null;
-	}
-
-	private void handleAimModeByLocation(Location location){
-
-		float distanceStep = lastloc.distanceTo(location);
-		float distanceToAim = location.distanceTo(locAim);
-
-		updateStatisticsByStepAndLocation(distanceStep,location);
-		
-		/*
-		 * show notification when user has entered aim area
-		 */
-		if( distanceToAim < distanceTolerance && (timeOut() || !aggressive)){
-
-			startLoc.set(location);
-
-			showNotification();
-
-			linearDistance = 0;
-			currentMsTime = System.currentTimeMillis();
-
-		}
-
-	}
-
-	private void handleTrackModeByLocation(Location location){
-
-		float distanceStep = lastloc.distanceTo(location);
-
-		if(distanceStep < distanceTolerance){
-			return;
-		}
-
-		updateStatisticsByStepAndLocation(distanceStep,location);
-
-		/*
-		 * show notification when time and distance is reached
-		 */
-		if( linearDistance >= distance && (timeOut() || !aggressive)){
-
-			startLoc.set(location);
-
-			showNotification();
-
-			linearDistance = 0;
-			currentMsTime = System.currentTimeMillis();
-
-		}
-
 	}
 
 	private void handleStatusModeByLocation(Location location){
@@ -597,10 +514,11 @@ public class ReminderService extends Service implements NotificationInterface{
 		/*
 		 * show notification when user's movement status changed
 		 */
-		if(isStanding != goToHold && (timeOut() || !aggressive)){
+		if(isStanding != goToHold){
 
 			startLoc.set(location);
-
+			currDistanceStep = distanceStep;
+			
 			showNotification();
 
 			linearDistance = 0;
