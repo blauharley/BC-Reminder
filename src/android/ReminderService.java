@@ -60,7 +60,6 @@ public class ReminderService extends Service implements NotificationInterface{
 	private Integer desiredAccuracy = 0;
 	private long currentMsTime;
 	private long endTimeCoordTaken = 0;
-	private long lastEndTimeCoordTaken = 0;
 	private int stopServiceDate = -1;
 
 	private Handler serviceTimer = null;
@@ -90,6 +89,8 @@ public class ReminderService extends Service implements NotificationInterface{
 	private Handler mUserLocationHandler = null;
 	private Thread triggerService = null;
 
+	private int notifyMsgId;
+	
 	class timer implements Runnable {
           public void run() {
             
@@ -105,8 +106,6 @@ public class ReminderService extends Service implements NotificationInterface{
         		handleLocationChangedEvent(locPassive,"passive");	
         	}
         	
-        	endTimeCoordTaken = System.currentTimeMillis();
-            
           }
     }
     
@@ -157,7 +156,9 @@ public class ReminderService extends Service implements NotificationInterface{
         serviceTimer.postDelayed( new timer(),interval+locationTimerTimeout);
         
         endTimeCoordTaken = System.currentTimeMillis();
-            
+        
+        notifyMsgId = NOTIFICATION_ID;
+        
         triggerService = new Thread(new Runnable(){
 			@TargetApi(16)
 	        public void run(){
@@ -281,19 +282,8 @@ public class ReminderService extends Service implements NotificationInterface{
 			locationManager.removeUpdates(locationListenerGPS);	
 		}
 		
-		if(aggressive){
-				
-			if(locationManager.isProviderEnabled(LocationManager.GPS_PROVIDER)){
-				locationManager.requestLocationUpdates(LocationManager.GPS_PROVIDER, 0, 0,locationListenerGPS);
-			}
-			
-		}
-		else{
-			
-			if(locationManager.isProviderEnabled(LocationManager.GPS_PROVIDER)){
-				locationManager.requestLocationUpdates(LocationManager.GPS_PROVIDER, interval, 0,locationListenerGPS);
-			}
-			
+		if(locationManager.isProviderEnabled(LocationManager.GPS_PROVIDER)){
+			locationManager.requestLocationUpdates(LocationManager.GPS_PROVIDER, interval, 0,locationListenerGPS);
 		}
 		
 	}
@@ -324,19 +314,8 @@ public class ReminderService extends Service implements NotificationInterface{
 			locationManager.removeUpdates(locationListenerNetwork);	
 		}
 		
-		if(aggressive){
-				
-			if(locationManager.isProviderEnabled(LocationManager.NETWORK_PROVIDER )){
-				locationManager.requestLocationUpdates(LocationManager.NETWORK_PROVIDER, 0, 0,locationListenerNetwork);
-			}
-			
-		}
-		else{
-			
-			if(locationManager.isProviderEnabled(LocationManager.NETWORK_PROVIDER )){
-				locationManager.requestLocationUpdates(LocationManager.NETWORK_PROVIDER, interval, 0,locationListenerNetwork);
-			}
-			
+		if(locationManager.isProviderEnabled(LocationManager.NETWORK_PROVIDER )){
+			locationManager.requestLocationUpdates(LocationManager.NETWORK_PROVIDER, interval, 0,locationListenerNetwork);
 		}
 		
 	}
@@ -409,11 +388,12 @@ public class ReminderService extends Service implements NotificationInterface{
 		}
 		else{
 
-            long diff = lastEndTimeCoordTaken == 0 ? 0 : Math.abs(lastEndTimeCoordTaken-endTimeCoordTaken);
+			
+            long diff = System.currentTimeMillis()-endTimeCoordTaken;
+            
+            endTimeCoordTaken = System.currentTimeMillis();
             
 			String currTime = String.format("%d sec", TimeUnit.MILLISECONDS.toSeconds(diff));
-			
-			lastEndTimeCoordTaken = endTimeCoordTaken;
 			
 			Notification.Builder builder = new Notification.Builder(this)
 			        .setSmallIcon(getResources().getIdentifier("ic_billclick_large", "drawable", getPackageName()))
@@ -447,8 +427,9 @@ public class ReminderService extends Service implements NotificationInterface{
 			Notification note = builder.build();
 			note.flags = Notification.DEFAULT_LIGHTS | Notification.FLAG_AUTO_CANCEL;
 
-			mNotificationManager.notify(NOTIFICATION_ID, note);
-
+			mNotificationManager.notify(notifyMsgId, note);
+			notifyMsgId++;
+			
 			if(whistle){
 				makeWhistle();
 			}
@@ -509,8 +490,6 @@ public class ReminderService extends Service implements NotificationInterface{
 			goToHold = false;
 		}
 
-		updateStatisticsByStepAndLocation(distanceStep,location);
-		
 		/*
 		 * show notification when user's movement status changed
 		 */
@@ -527,12 +506,6 @@ public class ReminderService extends Service implements NotificationInterface{
             
 		}
 
-	}
-	
-	private void updateStatisticsByStepAndLocation(float distanceStep,Location location){
-		linearDistance += distanceStep;
-		radiusDistance = startLoc.distanceTo(location);
-		lastloc.set(location);
 	}
 
 }
