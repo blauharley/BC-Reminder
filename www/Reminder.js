@@ -51,13 +51,13 @@ module.exports = {
 
         options = options || {};
 
-        var title = options.title ? options.title : "Reminder-Notification";
-        var content = options.content ? options.content : "Reminder-Content";
-        var interval = options.interval ? options.interval : 60000;
-        var distance = options.distance ? options.distance : 100;
-        var whistle = options.whistle != undefined ? options.whistle : true;
-        var closeApp = options.closeApp != undefined ? options.closeApp : true;
-        var stopDate = options.stopDate != undefined ? (options.stopDate == "tomorrow" ? "tomorrow" : "forever") : "forever";
+        var title = options.title != undefined ? options.title : new Error('no title');
+        var content = options.content != undefined ? options.content : new Error('no content');
+        var interval = options.interval != undefined ? options.interval : new Error('no interval');
+        var distance = options.distance != undefined ? options.distance : new Error('no distance');
+        var whistle = options.whistle != undefined ? options.whistle : new Error('no whistle');
+        var closeApp = options.closeApp != undefined ? options.closeApp : new Error('no closeApp');
+        var stopDate = options.stopDate != undefined ? options.stopDate : new Error('no stopDate');
 
         var mode = options.mode != undefined ? (options.mode == "aim" ? options.mode : (options.mode == "track" ? "track" : "status")) : "aim";
         var aggressive = mode == "status" ? false :(options.aggressive != undefined ? options.aggressive : true);
