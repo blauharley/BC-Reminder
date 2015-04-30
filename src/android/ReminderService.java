@@ -38,7 +38,6 @@ public class ReminderService extends Service implements NotificationInterface{
 
 	private int startServiceId;
 	
-	private Location startLoc;
 	private Location lastloc;
 	// keep it set to null
 	private LocationManager locationManager = null;
@@ -131,10 +130,6 @@ public class ReminderService extends Service implements NotificationInterface{
 
 		radiusDistance = 0;
 		linearDistance = 0;
-
-		startLoc = new Location("");
-		startLoc.setLongitude(0);
-		startLoc.setLatitude(0);
 
 		lastloc = new Location("");
 		lastloc.setLongitude(0);
@@ -453,7 +448,6 @@ public class ReminderService extends Service implements NotificationInterface{
 			
 			if(!startLocationTaken){
 				
-				startLoc.set(location);
 				lastloc.set(location);
 				
 				startLocationTaken = true;
@@ -490,12 +484,13 @@ public class ReminderService extends Service implements NotificationInterface{
 			goToHold = false;
 		}
 
+		lastloc.set(location);
+		
 		/*
 		 * show notification when user's movement status changed
 		 */
 		if(isStanding != goToHold){
 
-			startLoc.set(location);
 			currDistanceStep = distanceStep;
 			
 			showNotification();
