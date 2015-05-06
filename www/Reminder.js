@@ -59,13 +59,7 @@ module.exports = {
         var closeApp = options.closeApp != undefined ? options.closeApp : new Error('no closeApp');
         var stopDate = options.stopDate != undefined ? options.stopDate : new Error('no stopDate');
 
-        var mode = options.mode != undefined ? (options.mode == "aim" ? options.mode : (options.mode == "track" ? "track" : "status")) : "aim";
-        var aggressive = mode == "status" ? false :(options.aggressive != undefined ? options.aggressive : true);
-        var distanceTolerance = options.distanceTolerance != undefined ? options.distanceTolerance : 10;
-        var aimCoordLat = mode == "aim" ? (options.aimCoord != undefined ? options.aimCoord.lat : 0) : 0;
-        var aimCoordLong = mode == "aim" ? (options.aimCoord != undefined ? options.aimCoord.long : 0) : 0;
-
-        var args = [title,content,interval,distance,whistle,closeApp,stopDate,distanceTolerance,mode,aimCoordLat,aimCoordLong,aggressive];
+        var args = [title,content,interval,distance,whistle,closeApp,stopDate];
 
         exec(successCallback, errorCallback, "Reminder", "start", args);
     },

@@ -46,11 +46,6 @@ public class ReminderLauncher extends CordovaPlugin implements NotificationInter
 	private boolean whistle;
 	private boolean closeApp;
 	private String stopDate;
-	private float distanceTolerance;
-	private String mode;
-	private double aimLat;
-	private double aimLong;
-	private boolean aggressive;
 	
 	// wait at the beginning
 	private long startTime;
@@ -144,14 +139,6 @@ public class ReminderLauncher extends CordovaPlugin implements NotificationInter
 				
 				stopDate = args.getString(6);
 				
-				aggressive = args.getBoolean(11);
-				
-				distanceTolerance = (float)args.getDouble(7);
-				mode = args.getString(8);
-				
-				aimLat = (float)args.getDouble(9);
-				aimLong = (float)args.getDouble(10);
-				
 				if(isRunning()){
 					stopReminderService();
 				}
@@ -206,11 +193,6 @@ public class ReminderLauncher extends CordovaPlugin implements NotificationInter
 			mServiceIntent.putExtra("interval", interval);
 			mServiceIntent.putExtra("whistle", whistle);
 			mServiceIntent.putExtra("stopDate", stopDate);
-			mServiceIntent.putExtra("distanceTolerance", distanceTolerance);
-			mServiceIntent.putExtra("mode", mode);
-			mServiceIntent.putExtra("aimLat", aimLat);
-			mServiceIntent.putExtra("aimLong", aimLong);
-			mServiceIntent.putExtra("aggressive", aggressive);
 			
 			mServiceIntent.setFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_SINGLE_TOP);
 			

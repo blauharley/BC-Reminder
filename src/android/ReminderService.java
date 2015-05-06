@@ -53,11 +53,8 @@ public class ReminderService extends Service implements NotificationInterface{
 	private Location locAim;
 	private boolean aggressive;
 	
-	private float radiusDistance;
-	private float linearDistance;
 	private float currDistanceStep;
 	private Integer desiredAccuracy = 0;
-	private long currentMsTime;
 	private long endTimeCoordTaken = 0;
 	private int stopServiceDate = -1;
 
@@ -68,17 +65,12 @@ public class ReminderService extends Service implements NotificationInterface{
 
 	private boolean goToHold = false;
     
-	// wait at the beginning
-	private long startTime;
-	private long warmUpTime = 5000;
-	
 	private int locationTimerTimeout = 1000*3;
 	
 	private LocationListener locationListenerGPS;
 	private LocationListener locationListenerNetwork;
 	private LocationListener locationListenerPassive;
 	
-	private Location currentTakenLoc = null;
 	private Location locGPS = null;
 	private Location locNetwork = null;
 	private Location locPassive = null;
@@ -93,7 +85,7 @@ public class ReminderService extends Service implements NotificationInterface{
 	class timer implements Runnable {
           public void run() {
             
-            serviceTimer.postDelayed( new timer(),interval+locationTimerTimeout);
+            serviceTimer.postDelayed( new timer(),interval);
             
             if(locGPS != null && isLocationUpdateUpToDate(locGPS)){
         		handleLocationChangedEvent(locGPS,"gps");	
@@ -105,6 +97,8 @@ public class ReminderService extends Service implements NotificationInterface{
         		handleLocationChangedEvent(locPassive,"passive");	
         	}
         	
+        	endTimeCoordTaken = System.currentTimeMillis();
+            
           }
     }
     
@@ -119,34 +113,18 @@ public class ReminderService extends Service implements NotificationInterface{
 		interval = intent.getExtras().getLong("interval");
 		whistle = intent.getExtras().getBoolean("whistle");
 		stopDate = intent.getExtras().getString("stopDate");
-		distanceTolerance = intent.getExtras().getFloat("distanceTolerance");
-		mode = intent.getExtras().getString("mode");
-		aggressive = intent.getExtras().getBoolean("aggressive");
 		
 		if(STOP_SERVICE_DATE_TOMORROW.equalsIgnoreCase(stopDate)){
 			Calendar calendar = Calendar.getInstance();
 			stopServiceDate = calendar.get(Calendar.DAY_OF_WEEK);
 		}
 
-		radiusDistance = 0;
-		linearDistance = 0;
-
 		lastloc = new Location("");
 		lastloc.setLongitude(0);
 		lastloc.setLatitude(0);
 
-		double aimLat = intent.getExtras().getDouble("aimLat");
-		double aimLong = intent.getExtras().getDouble("aimLong");
-
-		locAim = new Location("");
-		locAim.setLongitude(aimLong);
-		locAim.setLatitude(aimLat);
-
 		startLocationTaken = false;
 		
-		startTime = System.currentTimeMillis();
-		currentMsTime = startTime;
-
 		serviceTimer = new Handler();
         serviceTimer.postDelayed( new timer(),interval+locationTimerTimeout);
         
@@ -332,14 +310,6 @@ public class ReminderService extends Service implements NotificationInterface{
 	    Ringtone r = RingtoneManager.getRingtone(getApplicationContext(), notification);
 	    r.play();
 	}
-	
-	private boolean timeOut(){
-		return System.currentTimeMillis() >= (currentMsTime + interval);
-	}
-
-	private boolean timeWarmUpOut(){
-		return System.currentTimeMillis() >= (startTime + warmUpTime);
-	}
 
 	private boolean handleServiceStop(){
 		Calendar calendar = Calendar.getInstance();
@@ -383,10 +353,7 @@ public class ReminderService extends Service implements NotificationInterface{
 		}
 		else{
 
-			
             long diff = System.currentTimeMillis()-endTimeCoordTaken;
-            
-            endTimeCoordTaken = System.currentTimeMillis();
             
 			String currTime = String.format("%d sec", TimeUnit.MILLISECONDS.toSeconds(diff));
 			
@@ -395,7 +362,6 @@ public class ReminderService extends Service implements NotificationInterface{
 			        .setContentTitle(title)
 			        .setContentText(
 			        	currentLocationType+"/"+currTime+"/"+(goToHold?"stop":"go")+"/"+String.format("%-12.2f", currDistanceStep)
-			        	//content.replace("#ML", ).replace("#MR", String.valueOf(radiusDistance))
 			        )
 			        .setAutoCancel(true);
 	
@@ -438,8 +404,6 @@ public class ReminderService extends Service implements NotificationInterface{
 		try{
 			
 			currentLocationType = locationType;
-			
-			currentTakenLoc = location;
 			
 			if(handleServiceStop()){
 				stopSelf(startServiceId);
@@ -495,10 +459,6 @@ public class ReminderService extends Service implements NotificationInterface{
 			
 			showNotification();
 
-			linearDistance = 0;
-			currentMsTime = System.currentTimeMillis();
-            startTime = currentMsTime;
-            
 		}
 
 	}
